@@ -25,6 +25,8 @@ from curl_cffi import requests
 import requests as standard_requests
 import urllib3
 from dotenv import load_dotenv
+import pytz
+from datetime import datetime
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -361,7 +363,25 @@ class SheinMonitor:
         self.send_telegram_message("🚀 Monitor Started (Optimized + HTML)")
         
         cycle = 0
+        last_reset_date = None
+        
         while self.running:
+            # --- Daily 7 AM Reset Logic ---
+            try:
+                ist_tz = pytz.timezone('Asia/Kolkata')
+                now_ist = datetime.now(ist_tz)
+                
+                # Check if it is 7 AM (or slightly after) and we haven't reset today
+                if now_ist.hour == 7 and now_ist.date() != last_reset_date:
+                    logger.info("🌅 7 AM Detected! Clearing state to force daily alerts...")
+                    self.send_telegram_message("🌅 <b>Good Morning!</b>\nStarting daily stock check... You will receive alerts for ALL in-stock items now.")
+                    
+                    self.stock_state = {} # Clear state
+                    self.save_state()     # Save empty state
+                    last_reset_date = now_ist.date()
+            except Exception as e:
+                logger.error(f"Error in daily reset check: {e}")
+            
             cycle += 1
             start_time = time.time()
             logger.info(f"--- Cycle {cycle} ---")
