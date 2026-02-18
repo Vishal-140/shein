@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.venv
+env/
+venv/
+ENV/
+
+# Logs and State
+monitor.log
+monitor_stdout.txt
+stock_state.json
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
