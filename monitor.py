@@ -241,6 +241,15 @@ class SheinMonitor:
         code = p.get('code')
         if not code: return
         
+        # Use the product's own segmentNameText as the authoritative gender.
+        # This is more reliable than trusting which filter returned it.
+        segment_gender = p.get('segmentNameText', '').strip()
+        if segment_gender in ("Men", "Women"):
+            true_gender = segment_gender
+        else:
+            # Fallback to the filter param if the field is missing
+            true_gender = gender
+        
         # Extract Price/MRP
         mrp = "N/A"
         if 'retailPrice' in p and 'displayformattedValue' in p['retailPrice']:
@@ -263,7 +272,7 @@ class SheinMonitor:
             'price': price,
             'image': image,
             'url': SHEIN_BASE_URL + p.get('url', f"/p/{code}"),
-            'category': gender
+            'category': true_gender
         }
 
     def fetch_products_for_gender(self, gender):
@@ -410,10 +419,14 @@ class SheinMonitor:
             all_found_products = {}
             for gender in MONITORED_GENDERS:
                 prods = self.fetch_products_for_gender(gender)
-                # Ensure unique codes and strip whitespace
+                # Merge: skip if already added (prevents cross-gender overwrite)
                 for k, v in prods.items():
                     clean_code = str(k).strip()
-                    all_found_products[clean_code] = v
+                    if clean_code not in all_found_products:
+                        all_found_products[clean_code] = v
+                    else:
+                        # Product already seen from another gender filter — keep original
+                        pass
             
             logger.info(f"Discovery complete. Found {len(all_found_products)} total products.")
             
