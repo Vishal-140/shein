@@ -37,13 +37,19 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- Configuration ---
 
 # Credentials (Environment Variables)
+# Men channel
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Women channel
+TELEGRAM_BOT_TOKEN_WOMEN = os.getenv("TELEGRAM_BOT_TOKEN_WOMEN")
+TELEGRAM_CHAT_ID_WOMEN = os.getenv("TELEGRAM_CHAT_ID_WOMEN")
 
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
     logger = logging.getLogger("SheinMonitor")
     logger.error("❌ Critical: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not found in environment variables.")
-    # We might want to exit here, but let's just log for now as the loop will fail sending messages.
+if not TELEGRAM_BOT_TOKEN_WOMEN or not TELEGRAM_CHAT_ID_WOMEN:
+    logger = logging.getLogger("SheinMonitor")
+    logger.error("❌ Critical: TELEGRAM_BOT_TOKEN_WOMEN or TELEGRAM_CHAT_ID_WOMEN not found in environment variables.")
 
 # API Configuration
 SHEIN_BASE_URL = "https://www.sheinindia.in"
@@ -113,6 +119,7 @@ class SheinMonitor:
     def shutdown(self, signum, frame):
         logger.info("Shutdown signal received. Exiting...")
         self.send_telegram_message("🛑 Monitor Stopped")
+        self.send_telegram_message("🛑 Monitor Stopped", gender="Women")
         self.running = False
         sys.exit(0)
 
@@ -143,22 +150,33 @@ class SheinMonitor:
         
         logger.error("❌ Critical: Could not initialize valid session after retries.")
 
-    def send_telegram_message(self, text, photo_url=None):
-        """Send a message to Telegram using standard requests with retries."""
+    def send_telegram_message(self, text, photo_url=None, gender=None):
+        """Send a message to Telegram using standard requests with retries.
+        
+        Routes to the Women channel when gender=='Women', otherwise uses the Men channel.
+        """
+        # Pick credentials based on gender
+        if gender == "Women":
+            bot_token = TELEGRAM_BOT_TOKEN_WOMEN
+            chat_id = TELEGRAM_CHAT_ID_WOMEN
+        else:
+            bot_token = TELEGRAM_BOT_TOKEN
+            chat_id = TELEGRAM_CHAT_ID
+
         for attempt in range(3):
             try:
                 if photo_url:
-                    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+                    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
                     payload = {
-                        "chat_id": TELEGRAM_CHAT_ID,
+                        "chat_id": chat_id,
                         "photo": photo_url,
                         "caption": text[:1024], # Caption limit
                         "parse_mode": "HTML" # Use HTML for safety
                     }
                 else:
-                    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
                     payload = {
-                        "chat_id": TELEGRAM_CHAT_ID,
+                        "chat_id": chat_id,
                         "text": text,
                         "disable_web_page_preview": False,
                         "parse_mode": "HTML"
@@ -178,7 +196,7 @@ class SheinMonitor:
                     # Retry once for text only if photo failed
                     if photo_url and attempt == 0:
                         logger.info("Retrying as text-only...")
-                        return self.send_telegram_message(text)
+                        return self.send_telegram_message(text, gender=gender)
             
             except standard_requests.exceptions.ReadTimeout:
                 logger.warning(f"Telegram ReadTimeout (Attempt {attempt+1}/3). Assuming delivered to prevent duplicate spam.")
@@ -360,7 +378,8 @@ class SheinMonitor:
         """Main Loop."""
         logger.info("🚀 Starting Shein Dynamic Monitor (Optimized + HTML)")
         self.running = True # Ensure running is True when called explicitly
-        self.send_telegram_message("🚀 Monitor Started (Optimized + HTML)")
+        self.send_telegram_message("🚀 Monitor Started (Optimized + HTML) - Men Channel")
+        self.send_telegram_message("🚀 Monitor Started (Optimized + HTML) - Women Channel", gender="Women")
         
         cycle = 0
         last_reset_date = None
@@ -375,6 +394,7 @@ class SheinMonitor:
                 if now_ist.hour == 7 and now_ist.date() != last_reset_date:
                     logger.info("🌅 7 AM Detected! Clearing state to force daily alerts...")
                     self.send_telegram_message("🌅 <b>Good Morning!</b>\nStarting daily stock check... You will receive alerts for ALL in-stock items now.")
+                    self.send_telegram_message("🌅 <b>Good Morning!</b>\nStarting daily stock check... You will receive alerts for ALL in-stock items now.", gender="Women")
                     
                     self.stock_state = {} # Clear state
                     self.save_state()     # Save empty state
@@ -450,7 +470,7 @@ class SheinMonitor:
                                     f"🔗 <a href='{product['url']}'>{product['url']}</a>"
                                 )
                                 # Send!
-                                if self.send_telegram_message(msg, product['image']):
+                                if self.send_telegram_message(msg, product['image'], gender=product.get('category')):
                                     self.stock_state[code] = {'in_stock': True, 'details': stock_details}
                                     self.save_state()
                             else:
